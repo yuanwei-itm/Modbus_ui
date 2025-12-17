@@ -17,7 +17,7 @@ export function getRealTimeData() {
   })
 }
 
-// 【新增】下发指令触发硬件采集
+// 触发硬件采集最新数据
 export function triggerHardwareCollection() {
   return request({
     url: '/api/realtime-data/trigger',
