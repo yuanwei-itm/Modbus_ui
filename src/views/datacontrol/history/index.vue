@@ -1,14 +1,25 @@
 <template>
   <div class="app-container">
     <el-form :model="queryParams" ref="queryForm" size="small" :inline="true" label-width="68px">
-      <el-form-item label="设备ID" prop="deviceId">
-        <el-input
-          v-model="queryParams.deviceId"
-          placeholder="请输入设备ID"
-          clearable
-          @keyup.enter.native="handleQuery"
-        />
+      <el-form-item label="设备选择" prop="deviceId">
+        <el-select 
+          v-model="queryParams.deviceId" 
+          placeholder="请选择或输入设备ID" 
+          clearable 
+          filterable 
+          allow-create 
+          default-first-option
+          @change="handleQuery"
+        >
+          <el-option
+            v-for="item in deviceOptions"
+            :key="item.deviceId"
+            :label="item.deviceName"
+            :value="item.deviceId"
+          />
+        </el-select>
       </el-form-item>
+
       <el-form-item label="时间范围">
         <el-date-picker
           v-model="dateRange"
@@ -57,6 +68,8 @@
 <script>
 // 引入定义的 API
 import { listModbusData } from "@/api/datacontrol/modbus";
+// 引入设备列表 API 
+import { listDevice } from "@/api/datacontrol/device";
 // 引入 ECharts
 import * as echarts from 'echarts';
 
@@ -70,22 +83,43 @@ export default {
       total: 0,
       // 表格数据
       dataList: [],
+      // 设备下拉选项数据
+      deviceOptions: [],
       // 日期范围
       dateRange: [],
       // 查询参数
       queryParams: {
         pageNum: 1,
         pageSize: 10,
-        deviceId: undefined
+        deviceId: undefined 
       },
       // 图表实例
       chart: null
     };
   },
   created() {
-    this.getList();
+    // 页面加载时，优先获取设备列表
+    this.getDeviceList();
   },
   methods: {
+    //获取设备列表并设置默认值 
+    getDeviceList() {
+      // 查询所有设备，pageSize 设置大一点以获取全部
+      listDevice({ pageNum: 1, pageSize: 1000 }).then(response => {
+        this.deviceOptions = response.rows;
+        
+        // 逻辑：如果有设备数据，默认选中第一个
+        if (this.deviceOptions && this.deviceOptions.length > 0) {
+          this.queryParams.deviceId = this.deviceOptions[0].deviceId;
+          // 选中后，触发查询加载数据和图表
+          this.getList();
+        } else {
+          // 如果没有设备，也把 loading 去掉
+          this.loading = false;
+        }
+      });
+    },
+
     /** 查询列表 */
     getList() {
       this.loading = true;
@@ -99,81 +133,91 @@ export default {
         this.initChart();
       });
     },
-    /** 初始化图表 (简单的 ECharts 示例) */
-   /** 初始化图表 */
-    initChart() {
-      // 1. 数据处理
-      const reversedData = this.dataList.slice().reverse();
-      
-      const xData = reversedData.map(item => item.readTime);
-      // 提取温度数据
-      const yTemp = reversedData.map(item => item.temperature);
-      // 提取湿度数据
-      const yHum = reversedData.map(item => item.humidity);
 
-      // 2. 初始化 dom
+    /** 初始化图表 (双Y轴配置) */
+    initChart() {
+      // 1. 确保实例存在
       if (!this.chart) {
         this.chart = echarts.init(document.getElementById('chart-container'));
       }
+
+      // 2. 空状态保护：如果没选设备，显示提示
+      if (!this.queryParams.deviceId) {
+          this.chart.clear();
+          this.chart.setOption({
+             title: { 
+               text: '请在上方选择设备，以查看趋势图', 
+               left: 'center', 
+               top: 'center', 
+               textStyle: { color: '#909399', fontSize: 16 } 
+             },
+             xAxis: { show: false },
+             yAxis: { show: false }
+          });
+          return;
+      }
+
+      // 3. 准备数据
+      const reversedData = this.dataList.slice().reverse();
+      const xData = reversedData.map(item => item.readTime);
+      const yTemp = reversedData.map(item => item.temperature);
+      const yHum = reversedData.map(item => item.humidity);
       
-      // 3. 设置配置项
+      // 4. 设置配置项 (双 Y 轴)
       this.chart.setOption({
-        title: { text: '温湿度趋势图' },
+        title: { text: '温湿度趋势图', left: 'left', top: 'top' },
         tooltip: { trigger: 'axis' },
-        // 显示图例，点击可以隐藏/显示特定线条
-        legend: { 
-          data: ['温度', '湿度'] 
-        },
-        xAxis: { type: 'category', data: xData },
-        // 配置双 Y 轴
+        legend: { data: ['温度', '湿度'] },
+        xAxis: { type: 'category', data: xData, show: true },
         yAxis: [
-          {
-            type: 'value',
-            name: '温度(℃)',
-            axisLabel: { formatter: '{value} °C' }
+          { 
+            type: 'value', 
+            name: '温度(℃)', 
+            show: true, 
+            axisLabel: { formatter: '{value} °C' } 
           },
-          {
-            type: 'value',
-            name: '湿度(%RH)',
-            axisLabel: { formatter: '{value} %' },
-            // 将湿度轴放在右侧
-            position: 'right', 
-            // 避免刻度线重叠
+          { 
+            type: 'value', 
+            name: '湿度(%RH)', 
+            show: true, 
+            position: 'right', // 放在右侧
+            axisLabel: { formatter: '{value} %' }, 
             splitLine: { show: false } 
           }
         ],
         series: [
-          {
-            // 温度线条配置
-            name: '温度',
-            type: 'line',
-            smooth: true,
-            data: yTemp,
-            yAxisIndex: 0, // 对应左侧第一个 Y 轴
-            itemStyle: { color: '#ff4949' } // 设为红色代表温度
+          { 
+            name: '温度', 
+            type: 'line', 
+            smooth: true, 
+            data: yTemp, 
+            yAxisIndex: 0, 
+            itemStyle: { color: '#ff4949' } 
           },
-          {
-            // 湿度线条配置
-            name: '湿度',
-            type: 'line',
-            smooth: true,
-            data: yHum,
+          { 
+            name: '湿度', 
+            type: 'line', 
+            smooth: true, 
+            data: yHum, 
             yAxisIndex: 1, 
-            itemStyle: { color: '#409EFF' } // 设为蓝色代表湿度
+            itemStyle: { color: '#409EFF' } 
           }
         ]
-      });
+      }, true); // true 表示不合并，完全重置配置
     },
+    
     /** 搜索按钮操作 */
     handleQuery() {
       this.queryParams.pageNum = 1;
       this.getList();
     },
+    
     /** 重置按钮操作 */
     resetQuery() {
       this.dateRange = [];
       this.resetForm("queryForm");
-      this.handleQuery();
+      // 重置后重新获取一下设备列表，保证回到默认选中状态
+      this.getDeviceList();
     }
   }
 };
