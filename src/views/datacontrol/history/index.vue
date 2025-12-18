@@ -100,34 +100,69 @@ export default {
       });
     },
     /** 初始化图表 (简单的 ECharts 示例) */
+   /** 初始化图表 */
     initChart() {
-       // 1. 创建图表实例
-       // 深拷贝一份数据并反转，避免影响表格显示的顺序
-       // slice() 复制数组，reverse() 反转数组
-       const reversedData = this.dataList.slice().reverse();
+      // 1. 数据处理
+      const reversedData = this.dataList.slice().reverse();
+      
+      const xData = reversedData.map(item => item.readTime);
+      // 提取温度数据
+      const yTemp = reversedData.map(item => item.temperature);
+      // 提取湿度数据
+      const yHum = reversedData.map(item => item.humidity);
 
-       // 使用反转后的数据生成 X 轴和 Y 轴
-       const xData = reversedData.map(item => item.readTime);
-       const yTemp = reversedData.map(item => item.temperature);
-
-       // 2. 初始化 dom
-       if (!this.chart) {
-         this.chart = echarts.init(document.getElementById('chart-container'));
-       }
-       
-       // 3. 设置配置项
-       this.chart.setOption({
-         title: { text: '温湿度趋势图' },
-         tooltip: { trigger: 'axis' },
-         xAxis: { type: 'category', data: xData },
-         yAxis: { type: 'value' },
-         series: [{
-            data: yTemp,
-            type: 'line',
+      // 2. 初始化 dom
+      if (!this.chart) {
+        this.chart = echarts.init(document.getElementById('chart-container'));
+      }
+      
+      // 3. 设置配置项
+      this.chart.setOption({
+        title: { text: '温湿度趋势图' },
+        tooltip: { trigger: 'axis' },
+        // 显示图例，点击可以隐藏/显示特定线条
+        legend: { 
+          data: ['温度', '湿度'] 
+        },
+        xAxis: { type: 'category', data: xData },
+        // 配置双 Y 轴
+        yAxis: [
+          {
+            type: 'value',
+            name: '温度(℃)',
+            axisLabel: { formatter: '{value} °C' }
+          },
+          {
+            type: 'value',
+            name: '湿度(%RH)',
+            axisLabel: { formatter: '{value} %' },
+            // 将湿度轴放在右侧
+            position: 'right', 
+            // 避免刻度线重叠
+            splitLine: { show: false } 
+          }
+        ],
+        series: [
+          {
+            // 温度线条配置
             name: '温度',
-            smooth: true
-         }]
-       });
+            type: 'line',
+            smooth: true,
+            data: yTemp,
+            yAxisIndex: 0, // 对应左侧第一个 Y 轴
+            itemStyle: { color: '#ff4949' } // 设为红色代表温度
+          },
+          {
+            // 湿度线条配置
+            name: '湿度',
+            type: 'line',
+            smooth: true,
+            data: yHum,
+            yAxisIndex: 1, 
+            itemStyle: { color: '#409EFF' } // 设为蓝色代表湿度
+          }
+        ]
+      });
     },
     /** 搜索按钮操作 */
     handleQuery() {
